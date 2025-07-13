@@ -20,22 +20,34 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 # User Serializer
 class UserSerializer(BaseUserRelatedSerializer):
-    profile = ProfileSerializer(read_only=True)
+    profile = ProfileSerializer(required=False)  # Profile không bắt buộc khi tạo user
     followers_count = serializers.SerializerMethodField()
     following_count = serializers.SerializerMethodField()
     is_following = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'username', 'email', 'profile', 'is_staff', 'followers_count', 'following_count', 'is_following']
-        extra_kwargs = {'password': {'write_only': True}}
+        fields = ['id', 'username', 'email', 'password', 'profile', 'is_staff', 'followers_count', 'following_count', 'is_following']
+        extra_kwargs = {
+            'password': {'write_only': True},  # Mật khẩu chỉ dùng để ghi
+            'is_staff': {'read_only': True}   # is_staff chỉ được đọc
+        }
 
     def create(self, validated_data):
-        return CustomUser.objects.create_user(
-            username=validated_data['username'],
-            email=validated_data.get('email', ''),
-            password=validated_data.get('password')
-        )
+        """Ghi đè hàm create để hash password và tạo profile nếu có."""
+        # Tách profile data ra nếu có
+        profile_data = validated_data.pop('profile', None)
+        # Lấy mật khẩu ra và xóa khỏi validated_data
+        password = validated_data.pop('password')
+        # Tạo user mới với các dữ liệu còn lại
+        user = CustomUser.objects.create(**validated_data)
+        # Dùng set_password để mã hóa mật khẩu
+        user.set_password(password)
+        user.save()
+        # Nếu có profile data, tạo profile cho user
+        if profile_data:
+            Profile.objects.create(user=user, **profile_data)
+        return user
 
     def get_followers_count(self, obj):
         return obj.followers.count()
